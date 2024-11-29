@@ -1,0 +1,15 @@
+services:
+  disneyapi:
+    build: ./disneyapi
+    ports:
+      - "3000:3000"
+  disneyfrontend:
+    build: ./disneyfrontend
+    ports:
+      - "8080:80"
+  nginx:
+    image: "nginx:latest"
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
