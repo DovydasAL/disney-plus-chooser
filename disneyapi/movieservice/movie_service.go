@@ -8,24 +8,29 @@ import (
 	"github.com/movieofthenight/go-streaming-availability/v4"
 )
 
-const apiKey = "98249cbed4msh3601788fa047ff9p195816jsn601ab369576a"
-
-var client *streaming.APIClient = nil
-var movies *[]streaming.Show = nil
-
-func getClient() *streaming.APIClient {
-	if client == nil {
-		client = streaming.NewAPIClientFromRapidAPIKey(apiKey, nil)
-	}
-	return client
+type DisneyMovieService struct {
+	client     *streaming.APIClient
+	dataAccess *MovieDataAccess
 }
 
-func getMovies() (*[]streaming.Show, error) {
-	if movies != nil {
-		return movies, nil
+type MovieService interface {
+	GetSuggestion(*SuggestionRequestV1) (*Suggestion, error)
+	GetMovies() (*[]streaming.Show, error)
+}
+
+func CreateMovieService(apiKey string, dataAccess *MovieDataAccess) MovieService {
+	return &DisneyMovieService{
+		client:     streaming.NewAPIClientFromRapidAPIKey(apiKey, nil),
+		dataAccess: dataAccess,
 	}
+}
+
+func (service *DisneyMovieService) GetMovies() (*[]streaming.Show, error) {
 	results := []streaming.Show{}
-	apiResult, err := getClient().ShowsAPI.SearchShowsByFilters(context.Background()).Country("us").Catalogs([]string{"disney"}).ShowType("movie").ExecuteWithAutoPagination(1)
+	apiResult, err := service.client.ShowsAPI.SearchShowsByFilters(context.Background()).Country("us").Catalogs([]string{"disney"}).ShowType("movie").ExecuteWithAutoPagination(1)
+	if err != nil {
+		return nil, err
+	}
 	for apiResult.Next() {
 		movie := apiResult.Get()
 		results = append(results, movie)
@@ -33,20 +38,20 @@ func getMovies() (*[]streaming.Show, error) {
 	if err != nil {
 		return nil, err
 	}
-	movies = &results
-	return movies, nil
+	return &results, nil
 }
 
-func GetSuggestion(suggestionRequest *SuggestionRequestV1) (*Suggestion, error) {
+func (service *DisneyMovieService) GetSuggestion(suggestionRequest *SuggestionRequestV1) (*Suggestion, error) {
 	suggestion := &Suggestion{}
-	movies, err := getMovies()
+	movies, err := (*(service.dataAccess)).GetMovies()
 	if err != nil {
 		return nil, err
 	}
 	movieTitles := make([]string, len(*movies))
 	for i := 0; i < len(movieTitles); i++ {
-		movieTitles[i] = (*movies)[i].Title
+		movieTitles[i] = (*movies)[i].title
 	}
 	suggestion.Movie = movieTitles[rand.Intn(len(movieTitles))]
+	suggestion.AllMovies = movies
 	return suggestion, nil
 }

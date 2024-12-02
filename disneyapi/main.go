@@ -1,7 +1,9 @@
 package main
 
 import (
+	"log/slog"
 	"net/http"
+	"os"
 
 	movieservice "github.com/DovydasAL/disneyapi/movieservice"
 
@@ -11,21 +13,25 @@ import (
 )
 
 func main() {
+	dataAccess, err := movieservice.CreateMovieDataAccess(os.Getenv("POSTGRES_HOST"), os.Getenv("POSTGRES_PORT"), os.Getenv("POSTGRES_USER"), os.Getenv("POSTGRES_PASSWORD"), os.Getenv("POSTGRES_DB"))
+	if err != nil {
+		panic(err)
+	}
+	service := movieservice.CreateMovieService(os.Getenv("RAPID_API_KEY"), &dataAccess)
+	startBackgroundCachingProcess(&dataAccess, &service)
+	startHttpServer(&service)
+}
+
+func startBackgroundCachingProcess(dataAccess *movieservice.MovieDataAccess, service *movieservice.MovieService) {
+	cacher := movieservice.CreateBackgroundCachingService(dataAccess, service)
+	cacher.Start()
+}
+
+func startHttpServer(service *movieservice.MovieService) {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Howdy"))
-	})
-
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		response, err := movieservice.GetSuggestion(nil)
-		if err != nil {
-			render.Render(w, r, ErrInternalServerError(err))
-			return
-		}
-
-		render.Status(r, http.StatusOK)
-		render.Render(w, r, NewSuggestionResponse(response))
 	})
 
 	r.Post("/api/v1/get_suggestion", func(w http.ResponseWriter, r *http.Request) {
@@ -36,7 +42,7 @@ func main() {
 			return
 		}
 
-		response, err := movieservice.GetSuggestion(data)
+		response, err := (*(service)).GetSuggestion(data)
 		if err != nil {
 			render.Render(w, r, ErrInternalServerError(err))
 			return
@@ -45,6 +51,7 @@ func main() {
 		render.Status(r, http.StatusOK)
 		render.Render(w, r, NewSuggestionResponse(response))
 	})
+	slog.Info("Starting http server")
 	http.ListenAndServe(":3000", r)
 }
 
